@@ -1,0 +1,20 @@
+# Compiler output
+out/
+cache/
+
+# Environment variables
+.env
+
+# Coverage
+lcov.info
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
