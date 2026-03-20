@@ -17,6 +17,7 @@ interface ITestToken is IERC20 {
 
 interface IFactory {
     function owner() external view returns (address);
+    function poolDeployer() external view returns (address);
     function setTreasury(address) external;
     function setFeeCollector(address) external;
     function setPendingOwner(address) external;
@@ -58,6 +59,7 @@ contract Deploy is Script {
         address teamVesting;
         address investorVesting;
         // V3 Core
+        address poolDeployer;
         address factory;
         bytes32 poolHash;
         // V3 Periphery
@@ -117,9 +119,6 @@ contract Deploy is Script {
     // ════════════════════════════════════════════
     //  STEP 2 & 3 — FBLK + Vesting Wallets
     // ════════════════════════════════════════════
-    //  FreeTheBlocksToken requires non-zero addresses for all 5 allocations.
-    //  We deploy with deployer as all recipients (gets 100M FBLK), then
-    //  transfer to vesting wallets and MasterChef in later steps.
 
     function _deployGovernance(Deployment memory d, address deployer) internal {
         d.fblk = _deploy(
@@ -127,7 +126,6 @@ contract Deploy is Script {
             abi.encode(deployer, deployer, deployer, deployer, deployer)
         );
 
-        // On testnet: beneficiary & treasury both = deployer
         d.teamVesting = _deploy(
             "VestingWallet.sol:VestingWallet",
             abi.encode(
@@ -159,11 +157,19 @@ contract Deploy is Script {
     }
 
     // ════════════════════════════════════════════
-    //  STEP 4 — V3 Core (Factory)
+    //  STEP 4 — V3 Core (PoolDeployer + Factory)
     // ════════════════════════════════════════════
 
     function _deployV3Core(Deployment memory d) internal {
-        d.factory = _deploy("FreeTheBlocksFactory.sol:FreeTheBlocksFactory", "");
+        // Deploy the standalone PoolDeployer (holds Pool bytecode, ~22KB)
+        d.poolDeployer = _deploy("FreeTheBlocksPoolDeployer.sol:FreeTheBlocksPoolDeployer", "");
+
+        // Deploy Factory with reference to PoolDeployer.
+        // The Factory constructor calls poolDeployer.setFactoryAddress(address(this)).
+        d.factory = _deploy(
+            "FreeTheBlocksFactory.sol:FreeTheBlocksFactory",
+            abi.encode(d.poolDeployer)
+        );
 
         d.poolHash = keccak256(
             vm.getCode("FreeTheBlocksPool.sol:FreeTheBlocksPool")
@@ -179,24 +185,24 @@ contract Deploy is Script {
     // ════════════════════════════════════════════
     //  STEP 5 — V3 Periphery
     // ════════════════════════════════════════════
-    //  Deployed from lib/v3-periphery compiled artifacts.
-    //  PoolAddress.sol in periphery MUST have the correct
-    //  INIT_CODE_HASH for FreeTheBlocksPool before deploying.
+    //  Periphery contracts receive the poolDeployer address as their "factory"
+    //  because PoolAddress.computeAddress needs the CREATE2 origin (the deployer).
+    //  The deployer acts as a facade, forwarding getPool/createPool to the real Factory.
 
     function _deployV3Periphery(Deployment memory d) internal {
         d.positionManager = _deploy(
             "NonfungiblePositionManager.sol:NonfungiblePositionManager",
-            abi.encode(d.factory, WETH9, address(0))
+            abi.encode(d.poolDeployer, WETH9, address(0))
         );
 
         d.swapRouter = _deploy(
             "SwapRouter.sol:SwapRouter",
-            abi.encode(d.factory, WETH9)
+            abi.encode(d.poolDeployer, WETH9)
         );
 
         d.quoter = _deploy(
             "QuoterV2.sol:QuoterV2",
-            abi.encode(d.factory, WETH9)
+            abi.encode(d.poolDeployer, WETH9)
         );
     }
 
@@ -214,15 +220,12 @@ contract Deploy is Script {
 
         IERC20(d.fblk).transfer(d.masterChef, 40_000_000 * 1e18);
 
-        // Add FTB/tUSDC as incentivized pool (100% of emissions)
         IMasterChef(d.masterChef).add(d.ftb, d.tusdc, 3000, 100);
     }
 
     // ════════════════════════════════════════════
     //  STEP 7 — Tokenomics
     // ════════════════════════════════════════════
-    //  VotingEscrow and BuyAndBurn must be compiled.
-    //  vm.getCode will revert if artifacts are missing.
 
     function _deployTokenomics(Deployment memory d) internal {
         d.votingEscrow = _deploy(
@@ -249,8 +252,6 @@ contract Deploy is Script {
         IFactory(d.factory).setTreasury(deployer);
         IFactory(d.factory).setFeeCollector(d.feeDistributor);
 
-        // On testnet: keep deployer as owner
-        // On mainnet: factory.setPendingOwner(MULTISIG_ADDRESS)
         IFactory(d.factory).setPendingOwner(deployer);
     }
 
@@ -274,6 +275,7 @@ contract Deploy is Script {
         console.log("  Investor Vesting:  ", d.investorVesting);
         console.log("");
         console.log("--- V3 CORE ---");
+        console.log("  PoolDeployer:      ", d.poolDeployer);
         console.log("  Factory:           ", d.factory);
         console.log("  INIT_CODE_HASH:");
         console.logBytes32(d.poolHash);
@@ -286,7 +288,6 @@ contract Deploy is Script {
         console.log("--- STAKING ---");
         console.log("  MasterChef:        ", d.masterChef);
         console.log("  Emissions start:    block");
-        // Can't concat uint with string in view — logged separately
         console.log(d.startBlock);
         console.log("");
         console.log("--- TOKENOMICS ---");
@@ -307,8 +308,6 @@ contract Deploy is Script {
     }
 
     // ──────────── Deploy helper ────────────
-    //  Loads compiled bytecode for any solc version via vm.getCode
-    //  and deploys using CREATE opcode with optional constructor args.
 
     function _deploy(string memory artifact, bytes memory args)
         internal

@@ -110,10 +110,20 @@ contract FreeTheBlocksFactoryTest is Test {
         treasury = makeAddr("treasury");
         feeDistributor = makeAddr("feeDistributor");
 
+        // Deploy standalone PoolDeployer first
+        bytes memory deployerCode = vm.getCode("FreeTheBlocksPoolDeployer.sol:FreeTheBlocksPoolDeployer");
+        address poolDeployerAddr;
+        assembly {
+            poolDeployerAddr := create(0, add(deployerCode, 0x20), mload(deployerCode))
+        }
+        require(poolDeployerAddr != address(0), "PoolDeployer deployment failed");
+
+        // Deploy Factory with PoolDeployer address as constructor arg
         bytes memory factoryCode = vm.getCode("FreeTheBlocksFactory.sol:FreeTheBlocksFactory");
+        bytes memory factoryInit = abi.encodePacked(factoryCode, abi.encode(poolDeployerAddr));
         address factoryAddr;
         assembly {
-            factoryAddr := create(0, add(factoryCode, 0x20), mload(factoryCode))
+            factoryAddr := create(0, add(factoryInit, 0x20), mload(factoryInit))
         }
         require(factoryAddr != address(0), "Factory deployment failed");
         factory = IFactory(factoryAddr);

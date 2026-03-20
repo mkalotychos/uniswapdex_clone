@@ -3,16 +3,24 @@ pragma solidity =0.7.6;
 
 import './interfaces/IUniswapV3Factory.sol';
 
-import './FreeTheBlocksPoolDeployer.sol';
 import './NoDelegateCall.sol';
 
-import './FreeTheBlocksPool.sol';
+interface IFreeTheBlocksPoolDeployer {
+    function deploy(address factory, address token0, address token1, uint24 fee, int24 tickSpacing)
+        external
+        returns (address pool);
+    function setFactoryAddress(address _factory) external;
+}
 
 /// @title FreeTheBlocks DEX factory
-/// @notice Deploys FreeTheBlocks pools and manages ownership, treasury, and protocol fee control
-contract FreeTheBlocksFactory is IUniswapV3Factory, FreeTheBlocksPoolDeployer, NoDelegateCall {
+/// @notice Deploys FreeTheBlocks pools (via external PoolDeployer) and manages ownership,
+///         treasury, and protocol fee control.
+contract FreeTheBlocksFactory is IUniswapV3Factory, NoDelegateCall {
     /// @inheritdoc IUniswapV3Factory
     address public override owner;
+
+    /// @notice The external PoolDeployer that holds Pool bytecode and performs CREATE2
+    address public poolDeployer;
 
     /// @notice Address that receives protocol fees (treasury / multisig)
     address public treasury;
@@ -36,11 +44,14 @@ contract FreeTheBlocksFactory is IUniswapV3Factory, FreeTheBlocksPoolDeployer, N
     event FeeCollectorChanged(address indexed oldCollector, address indexed newCollector);
     event PendingOwnerSet(address indexed pendingOwner);
 
-    constructor() {
+    constructor(address _poolDeployer) {
         owner = msg.sender;
         treasury = msg.sender;
-        defaultProtocolFee = 6 + (6 << 4); // 1/6 of LP fees for both tokens
+        poolDeployer = _poolDeployer;
+        defaultProtocolFee = 6 + (6 << 4);
         emit OwnerChanged(address(0), msg.sender);
+
+        IFreeTheBlocksPoolDeployer(_poolDeployer).setFactoryAddress(address(this));
 
         feeAmountTickSpacing[100] = 1;
         emit FeeAmountEnabled(100, 1);
@@ -64,7 +75,7 @@ contract FreeTheBlocksFactory is IUniswapV3Factory, FreeTheBlocksPoolDeployer, N
         int24 tickSpacing = feeAmountTickSpacing[fee];
         require(tickSpacing != 0);
         require(getPool[token0][token1][fee] == address(0));
-        pool = deploy(address(this), token0, token1, fee, tickSpacing);
+        pool = IFreeTheBlocksPoolDeployer(poolDeployer).deploy(address(this), token0, token1, fee, tickSpacing);
         getPool[token0][token1][fee] = pool;
         getPool[token1][token0][fee] = pool;
         emit PoolCreated(token0, token1, fee, tickSpacing, pool);
