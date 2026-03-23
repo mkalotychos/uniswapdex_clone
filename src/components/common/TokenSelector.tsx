@@ -3,7 +3,7 @@ import { X, Search } from "lucide-react";
 import clsx from "clsx";
 import { MOCK_TOKENS, type Token } from "../../constants/tokens";
 
-const COMMON_SYMBOLS = ["ETH", "USDC", "USDT", "DAI", "WBTC"];
+const COMMON_SYMBOLS = ["FTB", "tUSDC", "ETH", "USDC", "USDT", "DAI", "WBTC"];
 
 interface TokenSelectorProps {
   isOpen: boolean;

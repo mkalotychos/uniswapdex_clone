@@ -4,6 +4,7 @@ import Layout from "./components/layout/Layout";
 import Toaster from "./components/common/Toaster";
 import LoadingScreen from "./components/common/LoadingScreen";
 import SwapPage from "./pages/SwapPage";
+import TestnetHelper from "./pages/TestnetHelper";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -20,6 +21,7 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<SwapPage />} />
+          <Route path="/testnet" element={<TestnetHelper />} />
         </Routes>
       </Layout>
       <Toaster />

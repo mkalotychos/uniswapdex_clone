@@ -14,12 +14,13 @@ interface SwapInputProps {
   readonly?: boolean;
   loading?: boolean;
   showMax?: boolean;
+  balance?: string;
 }
 
 function TokenLogo({ token }: { token: Token }) {
   const [failed, setFailed] = useState(false);
 
-  if (failed) {
+  if (failed || !token.logoURI) {
     return (
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
         {token.symbol.charAt(0)}
@@ -47,6 +48,13 @@ function formatUsd(amount: string, symbol: string): string {
   })}`;
 }
 
+function formatDisplayBalance(raw: string): string {
+  const num = parseFloat(raw);
+  if (isNaN(num) || num === 0) return "0.00";
+  if (num < 0.0001) return "<0.0001";
+  return num.toLocaleString("en-US", { maximumFractionDigits: 4 });
+}
+
 function inputFontSize(value: string): string {
   const len = value.length;
   if (len > 18) return "text-lg";
@@ -65,6 +73,7 @@ export default function SwapInput({
   readonly = false,
   loading = false,
   showMax = false,
+  balance,
 }: SwapInputProps) {
   const [selectorOpen, setSelectorOpen] = useState(false);
 
@@ -82,9 +91,9 @@ export default function SwapInput({
       <div className="rounded-xl bg-background p-4">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm text-gray-400">{label}</span>
-          {showMax && (
+          {showMax && balance && (
             <button
-              onClick={() => onAmountChange?.("0")}
+              onClick={() => onAmountChange?.(balance)}
               className="text-xs font-medium text-primary hover:text-primary/80"
             >
               MAX
@@ -126,7 +135,9 @@ export default function SwapInput({
 
         <div className="mt-2 flex items-center justify-between">
           <span className="text-sm text-gray-500">{usdValue}</span>
-          <span className="text-sm text-gray-500">Balance: 0.00</span>
+          <span className="text-sm text-gray-500">
+            Balance: {formatDisplayBalance(balance ?? "0")}
+          </span>
         </div>
       </div>
 

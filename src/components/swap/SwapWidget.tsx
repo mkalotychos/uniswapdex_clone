@@ -1,130 +1,176 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { ArrowDownUp, ChevronDown, ChevronUp } from "lucide-react";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import clsx from "clsx";
 import { MOCK_TOKENS, type Token } from "../../constants/tokens";
 import { MOCK_PRICES } from "../../constants/prices";
 import { useSwapSettings } from "../../store/useSwapSettings";
 import { useToast } from "../../store/useToast";
+import { useSwapQuote } from "../../hooks/useSwapQuote";
+import { useSwapExecute } from "../../hooks/useSwapExecute";
+import { useTokenBalance } from "../../hooks/useTokenBalance";
+import { SEPOLIA_CHAIN_ID } from "../../constants/deployments";
 import SwapInput from "./SwapInput";
 import SwapSettings from "./SwapSettings";
 
-const DEFAULT_TOKEN_IN = MOCK_TOKENS[0]; // ETH
-const DEFAULT_TOKEN_OUT = MOCK_TOKENS[1]; // USDC
-
-function computeQuote(
-  amountIn: string,
-  tokenIn: Token,
-  tokenOut: Token
-): string {
-  const input = parseFloat(amountIn);
-  if (isNaN(input) || input === 0) return "";
-  const priceIn = MOCK_PRICES[tokenIn.symbol] ?? 0;
-  const priceOut = MOCK_PRICES[tokenOut.symbol] ?? 1;
-  const output = (input * priceIn) / priceOut;
-  return output.toFixed(6).replace(/\.?0+$/, "");
-}
-
-function formatRate(tokenIn: Token, tokenOut: Token, inverted: boolean) {
-  const pIn = MOCK_PRICES[tokenIn.symbol] ?? 0;
-  const pOut = MOCK_PRICES[tokenOut.symbol] ?? 1;
-
-  if (inverted) {
-    const rate = pOut / pIn;
-    return `1 ${tokenOut.symbol} = ${rate.toLocaleString("en-US", {
-      maximumFractionDigits: 6,
-    })} ${tokenIn.symbol}`;
-  }
-  const rate = pIn / pOut;
-  return `1 ${tokenIn.symbol} = ${rate.toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-  })} ${tokenOut.symbol}`;
+function getSepoliaDefaults(): [Token, Token] {
+  const ftb = MOCK_TOKENS.find((t) => t.symbol === "FTB");
+  const tusdc = MOCK_TOKENS.find((t) => t.symbol === "tUSDC");
+  if (ftb && tusdc) return [ftb, tusdc];
+  return [MOCK_TOKENS[0], MOCK_TOKENS[1]];
 }
 
 export default function SwapWidget() {
   const { isConnected } = useAccount();
+  const chainId = useChainId();
   const { openConnectModal } = useConnectModal();
   const { slippage } = useSwapSettings();
   const toast = useToast();
 
-  const [tokenIn, setTokenIn] = useState<Token>(DEFAULT_TOKEN_IN);
-  const [tokenOut, setTokenOut] = useState<Token>(DEFAULT_TOKEN_OUT);
+  const isSepolia = chainId === SEPOLIA_CHAIN_ID;
+
+  const [defaults] = useState(getSepoliaDefaults);
+  const [tokenIn, setTokenIn] = useState<Token>(defaults[0]);
+  const [tokenOut, setTokenOut] = useState<Token>(defaults[1]);
   const [amountIn, setAmountIn] = useState("");
-  const [amountOut, setAmountOut] = useState("");
-  const [quoteLoading, setQuoteLoading] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [rateInverted, setRateInverted] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
-  const getQuote = useCallback(
-    (input: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+  const hasAmount = amountIn !== "" && parseFloat(amountIn) > 0;
 
-      if (!input || parseFloat(input) === 0) {
-        setAmountOut("");
-        setQuoteLoading(false);
-        return;
-      }
+  const {
+    amountOut: quoteAmountOut,
+    amountOutFormatted,
+    isLoading: quoteLoading,
+    noLiquidity,
+  } = useSwapQuote({
+    tokenIn: tokenIn.address,
+    tokenOut: tokenOut.address,
+    amountIn,
+    decimalsIn: tokenIn.decimals,
+    decimalsOut: tokenOut.decimals,
+    enabled: hasAmount && isSepolia,
+  });
 
-      setQuoteLoading(true);
-      debounceRef.current = setTimeout(() => {
-        const result = computeQuote(input, tokenIn, tokenOut);
-        setAmountOut(result);
-        setQuoteLoading(false);
-      }, 300);
-    },
-    [tokenIn, tokenOut]
+  const displayAmountOut = amountOutFormatted ?? "";
+
+  const balanceIn = useTokenBalance(
+    isSepolia ? tokenIn.address : undefined,
+    tokenIn.decimals
+  );
+  const balanceOut = useTokenBalance(
+    isSepolia ? tokenOut.address : undefined,
+    tokenOut.decimals
   );
 
+  const {
+    needsApproval,
+    isApproving,
+    isSwapping,
+    swapConfirmed,
+    approve,
+    swap,
+    swapTxHash,
+    error: swapError,
+    reset: resetSwap,
+  } = useSwapExecute({
+    tokenIn: tokenIn.address,
+    tokenOut: tokenOut.address,
+    amountIn,
+    decimalsIn: tokenIn.decimals,
+    amountOut: quoteAmountOut,
+    enabled: hasAmount && !noLiquidity && isSepolia,
+  });
+
   useEffect(() => {
-    getQuote(amountIn);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [amountIn, getQuote]);
+    if (swapConfirmed && swapTxHash) {
+      toast.add(
+        "success",
+        `Swap confirmed! https://sepolia.etherscan.io/tx/${swapTxHash}`,
+        8000
+      );
+      setAmountIn("");
+      balanceIn.refetch();
+      balanceOut.refetch();
+      resetSwap();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swapConfirmed, swapTxHash]);
+
+  useEffect(() => {
+    if (swapError) {
+      toast.add("error", swapError.message.slice(0, 120));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swapError]);
 
   const handleSwapDirection = () => {
     setTokenIn(tokenOut);
     setTokenOut(tokenIn);
-    setAmountIn(amountOut);
-    setAmountOut(amountIn);
+    setAmountIn(displayAmountOut);
   };
 
-  const hasAmount = amountIn !== "" && parseFloat(amountIn) > 0;
   const minReceived =
-    amountOut && parseFloat(amountOut) > 0
-      ? (parseFloat(amountOut) * (1 - slippage / 100)).toFixed(
-          amountOut.includes(".") ? amountOut.split(".")[1].length : 2
-        )
+    displayAmountOut && parseFloat(displayAmountOut) > 0
+      ? (parseFloat(displayAmountOut) * (1 - slippage / 100)).toFixed(6)
       : "0";
 
-  const [swapping, setSwapping] = useState(false);
+  const rateString = (() => {
+    const inVal = parseFloat(amountIn);
+    const outVal = parseFloat(displayAmountOut);
+    if (inVal > 0 && outVal > 0) {
+      if (rateInverted) {
+        return `1 ${tokenOut.symbol} = ${(inVal / outVal).toFixed(6)} ${tokenIn.symbol}`;
+      }
+      return `1 ${tokenIn.symbol} = ${(outVal / inVal).toFixed(6)} ${tokenOut.symbol}`;
+    }
+    const pIn = MOCK_PRICES[tokenIn.symbol] ?? 0;
+    const pOut = MOCK_PRICES[tokenOut.symbol] ?? 1;
+    if (rateInverted) {
+      return `1 ${tokenOut.symbol} = ${(pOut / pIn).toFixed(6)} ${tokenIn.symbol}`;
+    }
+    return `1 ${tokenIn.symbol} = ${(pIn / pOut).toFixed(2)} ${tokenOut.symbol}`;
+  })();
 
-  const buttonState = !isConnected
+  type BtnState =
+    | "connect"
+    | "enter"
+    | "loading"
+    | "noLiquidity"
+    | "approve"
+    | "approving"
+    | "swapping"
+    | "swap";
+
+  const buttonState: BtnState = !isConnected
     ? "connect"
     : !hasAmount
       ? "enter"
-      : "swap";
+      : quoteLoading
+        ? "loading"
+        : noLiquidity
+          ? "noLiquidity"
+          : needsApproval
+            ? isApproving
+              ? "approving"
+              : "approve"
+            : isSwapping
+              ? "swapping"
+              : "swap";
 
-  const handleSwap = () => {
-    setSwapping(true);
-    setTimeout(() => {
-      setSwapping(false);
-      toast.add("success", "Swap submitted — View on Etherscan");
-    }, 2000);
+  const gradientStyle = {
+    background: "linear-gradient(135deg, #00f5a0, #00d9f5)",
   };
 
   return (
     <div className="w-full max-w-[480px] rounded-2xl border border-border bg-surface p-1 shadow-lg shadow-black/20">
       <div className="p-4">
-        {/* Header */}
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">Swap</h2>
           <SwapSettings />
         </div>
 
-        {/* Token In */}
         <SwapInput
           label="You pay"
           token={tokenIn}
@@ -132,16 +178,13 @@ export default function SwapWidget() {
           amount={amountIn}
           onAmountChange={setAmountIn}
           onTokenSelect={(t) => {
-            if (t.address === tokenOut.address) {
-              handleSwapDirection();
-            } else {
-              setTokenIn(t);
-            }
+            if (t.address === tokenOut.address) handleSwapDirection();
+            else setTokenIn(t);
           }}
           showMax={isConnected}
+          balance={balanceIn.formatted}
         />
 
-        {/* Direction toggle */}
         <div className="relative z-10 -my-2.5 flex justify-center">
           <button
             onClick={handleSwapDirection}
@@ -151,26 +194,22 @@ export default function SwapWidget() {
           </button>
         </div>
 
-        {/* Token Out */}
         <SwapInput
           label="You receive"
           token={tokenOut}
           otherToken={tokenIn}
-          amount={amountOut}
+          amount={displayAmountOut}
           onTokenSelect={(t) => {
-            if (t.address === tokenIn.address) {
-              handleSwapDirection();
-            } else {
-              setTokenOut(t);
-            }
+            if (t.address === tokenIn.address) handleSwapDirection();
+            else setTokenOut(t);
           }}
           readonly
           loading={quoteLoading}
+          balance={balanceOut.formatted}
         />
       </div>
 
-      {/* Price details */}
-      {hasAmount && amountOut && (
+      {hasAmount && displayAmountOut && (
         <div className="mx-1 mb-1 rounded-xl border border-border bg-background">
           <button
             onClick={() => setDetailsOpen((p) => !p)}
@@ -183,7 +222,7 @@ export default function SwapWidget() {
               }}
               className="cursor-pointer text-gray-300 hover:text-white"
             >
-              {formatRate(tokenIn, tokenOut, rateInverted)}
+              {rateString}
             </span>
             {detailsOpen ? (
               <ChevronUp className="h-4 w-4 text-gray-400" />
@@ -203,18 +242,14 @@ export default function SwapWidget() {
             <div className="overflow-hidden">
               <div className="space-y-2 border-t border-border px-4 pt-3 pb-4 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Price impact</span>
-                  <span className="text-gray-300">0.01%</span>
-                </div>
-                <div className="flex justify-between">
                   <span className="text-gray-500">Min. received</span>
                   <span className="text-gray-300">
                     {minReceived} {tokenOut.symbol}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Network fee</span>
-                  <span className="text-gray-300">~$3.40</span>
+                  <span className="text-gray-500">Slippage tolerance</span>
+                  <span className="text-gray-300">{slippage}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Route</span>
@@ -228,15 +263,18 @@ export default function SwapWidget() {
         </div>
       )}
 
-      {/* Action button */}
+      {hasAmount && noLiquidity && (
+        <div className="mx-4 mb-2 rounded-lg bg-red-500/10 p-3 text-center text-sm text-red-400">
+          Insufficient liquidity for this trade
+        </div>
+      )}
+
       <div className="p-3 pt-2">
         {buttonState === "connect" && (
           <button
             onClick={() => openConnectModal?.()}
             className="w-full rounded-xl py-4 text-base font-bold text-black transition-all hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
-            style={{
-              background: "linear-gradient(135deg, #00f5a0, #00d9f5)",
-            }}
+            style={gradientStyle}
           >
             Connect Wallet
           </button>
@@ -251,23 +289,64 @@ export default function SwapWidget() {
           </button>
         )}
 
+        {buttonState === "loading" && (
+          <button
+            disabled
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-background py-4 text-base font-semibold text-gray-400"
+          >
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-500/30 border-t-gray-400" />
+            Fetching quote...
+          </button>
+        )}
+
+        {buttonState === "noLiquidity" && (
+          <button
+            disabled
+            className="w-full cursor-not-allowed rounded-xl bg-red-500/10 py-4 text-base font-semibold text-red-400"
+          >
+            Insufficient liquidity
+          </button>
+        )}
+
+        {buttonState === "approve" && (
+          <button
+            onClick={approve}
+            className="w-full rounded-xl py-4 text-base font-bold text-black transition-all hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
+            style={gradientStyle}
+          >
+            Approve {tokenIn.symbol}
+          </button>
+        )}
+
+        {buttonState === "approving" && (
+          <button
+            disabled
+            className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-base font-bold text-black/70 opacity-70"
+            style={gradientStyle}
+          >
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+            Approving...
+          </button>
+        )}
+
+        {buttonState === "swapping" && (
+          <button
+            disabled
+            className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-base font-bold text-black/70 opacity-70"
+            style={gradientStyle}
+          >
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+            Swapping...
+          </button>
+        )}
+
         {buttonState === "swap" && (
           <button
-            onClick={handleSwap}
-            disabled={swapping}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-base font-bold text-black transition-all hover:scale-[1.01] hover:brightness-110 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-70"
-            style={{
-              background: "linear-gradient(135deg, #00f5a0, #00d9f5)",
-            }}
+            onClick={swap}
+            className="w-full rounded-xl py-4 text-base font-bold text-black transition-all hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
+            style={gradientStyle}
           >
-            {swapping ? (
-              <>
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-black/30 border-t-black" />
-                Swapping...
-              </>
-            ) : (
-              "Swap"
-            )}
+            Swap
           </button>
         )}
       </div>

@@ -1,5 +1,5 @@
 export const MOCK_PRICES: Record<string, number> = {
-  ETH: 2341.23,
+  ETH: 2500,
   USDC: 1,
   USDT: 1,
   DAI: 1,
@@ -7,4 +7,6 @@ export const MOCK_PRICES: Record<string, number> = {
   UNI: 7.42,
   LINK: 14.85,
   AAVE: 92.6,
+  FTB: 1,
+  tUSDC: 1,
 };

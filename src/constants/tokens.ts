@@ -1,14 +1,41 @@
+import { getAddresses } from './deployments'
+
 export interface Token {
   symbol: string;
   name: string;
   address: string;
   decimals: number;
   logoURI: string;
+  chainId?: number;
 }
 
 const TW_ASSETS = "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets";
 
+const sepoliaAddresses = (() => {
+  try { return getAddresses(11155111) } catch { return null }
+})();
+
+export const SEPOLIA_TOKENS: Token[] = sepoliaAddresses ? [
+  {
+    symbol: "FTB",
+    name: "FreeTheBlocks Token",
+    address: sepoliaAddresses.FTBToken,
+    decimals: 18,
+    chainId: 11155111,
+    logoURI: "",
+  },
+  {
+    symbol: "tUSDC",
+    name: "Test USDC",
+    address: sepoliaAddresses.tUSDC,
+    decimals: 6,
+    chainId: 11155111,
+    logoURI: "",
+  },
+] : [];
+
 export const MOCK_TOKENS: Token[] = [
+  ...SEPOLIA_TOKENS,
   {
     symbol: "ETH",
     name: "Ethereum",
