@@ -1,73 +1,85 @@
-# React + TypeScript + Vite
+# FreeTheBlocks DEX (Uniswap-style clone)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A full-stack decentralized exchange project: a **React** swap UI wired to **Uniswap v3–style** smart contracts on **Ethereum Sepolia**, plus a **Foundry** workspace for pools, routing, liquidity, and tokenomics.
 
-Currently, two official plugins are available:
+## What this project is
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Frontend** — A swap experience similar in spirit to Uniswap: pick tokens, see a quote, approve if needed, and swap through an on-chain router. The app is branded **FreeTheBlocks** and targets **Sepolia** testnet.
+- **Smart contracts** (`my-dex-contracts/`) — Solidity code organized like a v3 DEX: factory and pool logic, periphery (e.g. swap router, position manager, quoter), test tokens, staking (`MasterChef`), fee distribution, vesting, and related scripts for deploy and pool setup.
 
-## React Compiler
+Deployed addresses for Sepolia are recorded in `deployments/sepolia.json` and consumed by the app via `src/constants/deployments.ts`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Tech stack
 
-## Expanding the ESLint configuration
+| Area | Tools |
+|------|--------|
+| UI | [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/) |
+| Build & dev server | [Vite 8](https://vite.dev/) |
+| Styling | [Tailwind CSS](https://tailwindcss.com/), [clsx](https://github.com/lukeed/clsx) |
+| Wallet & chain | [Wagmi](https://wagmi.sh/), [Viem](https://viem.sh/), [RainbowKit](https://www.rainbowkit.com/) |
+| Data fetching / cache | [TanStack Query](https://tanstack.com/query) |
+| State | [Zustand](https://zustand-demo.pmnd.rs/) |
+| Routing | [React Router](https://reactrouter.com/) |
+| Icons | [Lucide React](https://lucide.dev/) |
+| Contracts | [Foundry](https://book.getfoundry.sh/) (Forge, Anvil, Cast), Solidity |
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## How it works (high level)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+1. **Wallet** — The user connects with RainbowKit. `main.tsx` configures Wagmi for **Sepolia** and optional Alchemy RPC via `VITE_ALCHEMY_API_KEY`.
+2. **Addresses** — Contract addresses come from `deployments/sepolia.json` (factory, router, quoter, tokens, etc.).
+3. **Swap page** — `SwapWidget` uses hooks such as `useSwapQuote` and `useSwapExecute` to call the on-chain **Quoter** for estimates and the **SwapRouter** for approvals and swaps, using token metadata from `src/constants/tokens.ts`.
+4. **Testnet helper** — Route `/testnet` exposes utilities for working on Sepolia (see `TestnetHelper` page).
+5. **Contracts repo** — Under `my-dex-contracts/`, Foundry builds and tests the protocol; `forge script` / `CreatePool` style scripts deploy and configure pools. Dependencies are managed with `foundry.toml` and `remappings.txt` (libraries live under `lib/` after `forge install` — see `.gitignore`).
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Repository layout
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+├── src/                    # React app (pages, components, hooks, constants)
+├── deployments/            # JSON deployment artifacts (e.g. sepolia.json)
+├── public/                 # Static assets
+├── my-dex-contracts/       # Foundry project (Solidity, scripts, tests)
+└── package.json
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Prerequisites
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- **Node.js** (LTS recommended) and npm  
+- **Foundry** — [install](https://book.getfoundry.sh/getting-started/installation) for building and testing contracts
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Frontend setup
+
+```bash
+npm install
+npm run dev
 ```
+
+Optional: create a `.env` file in the repo root for the variables below.
+
+Open the URL Vite prints (usually `http://localhost:5173`).
+
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | Start dev server with HMR |
+| `npm run build` | Typecheck + production build |
+| `npm run preview` | Serve production build locally |
+| `npm run lint` | ESLint |
+
+### Environment variables (frontend)
+
+Create a `.env` in the project root (Vite exposes only variables prefixed with `VITE_`):
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_WALLET_CONNECT_PROJECT_ID` | [WalletConnect / Reown Cloud](https://cloud.reown.com/) project ID (required for reliable WalletConnect) |
+| `VITE_ALCHEMY_API_KEY` | Optional; uses Alchemy for Sepolia HTTP RPC when set |
+
+## Contracts setup
+
+```bash
+cd my-dex-contracts
+forge install    # install libs from remappings / foundry.lock if needed
+forge build
+forge test
+```
+
+For Sepolia deploys, configure RPC and keys in line with `foundry.toml` (e.g. `SEPOLIA_RPC_URL`, `ETHERSCAN_API_KEY` for verification). See scripts under `my-dex-contracts/script/`.
