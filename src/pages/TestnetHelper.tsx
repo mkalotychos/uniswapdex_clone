@@ -172,6 +172,7 @@ const CONTRACT_LABELS: [string, string][] = [
   ["PositionManager", "PositionManager"],
   ["FTBToken", "FTB Token"],
   ["tUSDC", "tUSDC"],
+  ["BlocksmithToken", "Blocksmith (BS)"],
   ["MasterChef", "MasterChef"],
   ["VotingEscrow", "VotingEscrow"],
   ["FeeDistributor", "FeeDistributor"],
@@ -216,7 +217,7 @@ export default function TestnetHelper() {
         <h2 className="mb-4 text-lg font-semibold text-white">
           Add Tokens to MetaMask
         </h2>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <AddTokenButton
             symbol="FTB"
             tokenAddress={addresses.FTBToken}
@@ -226,6 +227,11 @@ export default function TestnetHelper() {
             symbol="tUSDC"
             tokenAddress={addresses.tUSDC}
             decimals={6}
+          />
+          <AddTokenButton
+            symbol="BS"
+            tokenAddress={addresses.BlocksmithToken}
+            decimals={18}
           />
         </div>
       </section>
@@ -240,7 +246,7 @@ export default function TestnetHelper() {
             Connect your wallet to mint test tokens.
           </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <MintCard
               symbol="FTB"
               tokenAddress={addresses.FTBToken}
@@ -256,6 +262,14 @@ export default function TestnetHelper() {
               abi={TUSDC_ABI}
               defaultAmount="5000"
               maxAmount="100000"
+            />
+            <MintCard
+              symbol="BS"
+              tokenAddress={addresses.BlocksmithToken}
+              decimals={18}
+              abi={FTB_ABI}
+              defaultAmount="1000"
+              maxAmount="10000"
             />
           </div>
         )}

@@ -9,4 +9,5 @@ export const MOCK_PRICES: Record<string, number> = {
   AAVE: 92.6,
   FTB: 1,
   tUSDC: 1,
+  BS: 17,
 };
