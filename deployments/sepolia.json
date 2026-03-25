@@ -6,6 +6,7 @@
   "contracts": {
     "FTBToken": "0xfea6d69A82f96A2AD3f71D380B4f9673da1bb045",
     "tUSDC": "0xCe40c28887a61D3Dd6aa35fA0160A7909375c435",
+    "BlocksmithToken": "0x8A46407AE310A7d7c7b42aD5f10dB19E89AfC048",
     "FBLKToken": "0x4430de62bf5cde393FbFADe4Fd372bD776DF480f",
     "TeamVesting": "0x98e8Eb9F0c78a8D4BBb152C554b05B9407A43bD6",
     "InvestorVesting": "0xeef8f03bea91E26eF9cc71b1EF11c36dE77E29d2",
