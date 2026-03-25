@@ -32,6 +32,14 @@ export const SEPOLIA_TOKENS: Token[] = sepoliaAddresses ? [
     chainId: 11155111,
     logoURI: "",
   },
+  {
+    symbol: "BS",
+    name: "Blocksmith",
+    address: sepoliaAddresses.BlocksmithToken,
+    decimals: 18,
+    chainId: 11155111,
+    logoURI: "",
+  },
 ] : [];
 
 export const MOCK_TOKENS: Token[] = [
